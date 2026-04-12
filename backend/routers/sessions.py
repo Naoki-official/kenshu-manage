@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import datetime
-from pathlib import Path
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from constants import (
@@ -13,78 +13,122 @@ from constants import (
     FIELD_CHECKED,
     FIELD_UPDATED_AT,
 )
+from database import get_db
 
 router = APIRouter()
-DATA_DIR = Path(__file__).parent.parent / "data"
 
 
 class CommentUpdate(BaseModel):
     comment: str
 
 
-def _get_all_month_files() -> list[Path]:
-    """data/ 配下の全JSONファイルをソート済みで返す。"""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    files = sorted(DATA_DIR.glob("*.json"))
-    return files
-
-
-def _load_json(filepath: Path) -> dict:
-    with open(filepath, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _save_json(filepath: Path, data: dict) -> None:
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
 @router.get("/sessions")
-def list_sessions():
+def list_sessions(db: sqlite3.Connection = Depends(get_db)):
     """全セッション一覧を返す（タブ表示用）。"""
+    cursor = db.cursor()
+    
+    # sessions を uploaded_at の昇順で全件取得
+    cursor.execute("SELECT id, month, uploaded_at, round FROM sessions ORDER BY uploaded_at ASC")
+    sessions = cursor.fetchall()
+    
     result = []
-    for fp in _get_all_month_files():
-        data = _load_json(fp)
-        for sess in data.get("sessions", []):
-            result.append({
-                "id": sess["id"],
-                "month": data["month"],
-                "uploaded_at": sess["uploaded_at"],
-                "round": sess["round"],
-                "row_count": len(sess.get("rows", [])),
-            })
+    for sess in sessions:
+        # そのセッションに紐づく行数をカウント
+        cursor.execute("SELECT COUNT(*) as cnt FROM records WHERE session_id = ?", (sess["id"],))
+        row_count = cursor.fetchone()["cnt"]
+        
+        result.append({
+            "id": sess["id"],
+            "month": sess["month"],
+            "uploaded_at": sess["uploaded_at"],
+            "round": sess["round"],
+            "row_count": row_count,
+        })
     return result
 
 
 @router.get("/sessions/{session_id}")
-def get_session(session_id: str):
+def get_session(session_id: str, db: sqlite3.Connection = Depends(get_db)):
     """特定セッションのデータを返す。"""
-    for fp in _get_all_month_files():
-        data = _load_json(fp)
-        for sess in data.get("sessions", []):
-            if sess["id"] == session_id:
-                return sess
-    raise HTTPException(status_code=404, detail="セッションが見つかりません。")
+    cursor = db.cursor()
+    cursor.execute("SELECT id, month, uploaded_at, round FROM sessions WHERE id = ?", (session_id,))
+    sess = cursor.fetchone()
+    if not sess:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません。")
+        
+    cursor.execute("""
+        SELECT management_number, comment, checked, updated_at, data 
+        FROM records WHERE session_id = ?
+    """, (session_id,))
+    records = cursor.fetchall()
+    
+    # 互換性のため、元のCSVとしての辞書形式に復元する
+    rows = []
+    for r in records:
+        try:
+            row_data = json.loads(r["data"])
+        except Exception:
+            row_data = {}
+            
+        row_data[COL_MANAGEMENT_NUMBER] = r["management_number"]
+        row_data[FIELD_COMMENT] = r["comment"]
+        row_data[FIELD_CHECKED] = bool(r["checked"])
+        row_data[FIELD_UPDATED_AT] = r["updated_at"]
+        rows.append(row_data)
+        
+    return {
+        "id": sess["id"],
+        "month": sess["month"],
+        "uploaded_at": sess["uploaded_at"],
+        "round": sess["round"],
+        "rows": rows,
+    }
 
 
 @router.patch("/sessions/{session_id}/rows/{management_number}")
-def update_comment(session_id: str, management_number: str, body: CommentUpdate):
+def update_comment(
+    session_id: str, 
+    management_number: str, 
+    body: CommentUpdate, 
+    db: sqlite3.Connection = Depends(get_db)
+):
     """指定行のコメントを更新する。"""
-    for fp in _get_all_month_files():
-        data = _load_json(fp)
-        for sess in data.get("sessions", []):
-            if sess["id"] == session_id:
-                for row in sess.get("rows", []):
-                    if row.get(COL_MANAGEMENT_NUMBER) == management_number:
-                        row[FIELD_COMMENT] = body.comment
-                        row[FIELD_CHECKED] = bool(body.comment)
-                        row[FIELD_UPDATED_AT] = datetime.now().strftime(
-                            "%Y-%m-%d %H:%M"
-                        )
-                        _save_json(fp, data)
-                        return row
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"{COL_MANAGEMENT_NUMBER} '{management_number}' が見つかりません。",
-                )
-    raise HTTPException(status_code=404, detail="セッションが見つかりません。")
+    cursor = db.cursor()
+    
+    # 存在確認
+    cursor.execute("""
+        SELECT management_number, data
+        FROM records
+        WHERE session_id = ? AND management_number = ?
+    """, (session_id, management_number))
+    record = cursor.fetchone()
+    
+    if not record:
+        raise HTTPException(
+            status_code=404,
+            detail=f"{COL_MANAGEMENT_NUMBER} '{management_number}' が見つかりません。",
+        )
+        
+    comment = body.comment
+    checked = 1 if body.comment else 0
+    updated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    
+    cursor.execute("""
+        UPDATE records 
+        SET comment = ?, checked = ?, updated_at = ?
+        WHERE session_id = ? AND management_number = ?
+    """, (comment, checked, updated_at, session_id, management_number))
+    db.commit()
+    
+    # 返却用に整形
+    try:
+        row_data = json.loads(record["data"])
+    except Exception:
+        row_data = {}
+        
+    row_data[COL_MANAGEMENT_NUMBER] = management_number
+    row_data[FIELD_COMMENT] = comment
+    row_data[FIELD_CHECKED] = bool(checked)
+    row_data[FIELD_UPDATED_AT] = updated_at
+    
+    return row_data
