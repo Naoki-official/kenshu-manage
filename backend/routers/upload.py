@@ -70,7 +70,13 @@ async def upload_csv(file: UploadFile = File(...), db: sqlite3.Connection = Depe
         )
 
     now = datetime.now()
-    month_key = now.strftime("%Y-%m")
+    if now.day <= NEXT_MONTH_THRESHOLD:
+        if now.month == 1:
+            month_key = f"{now.year - 1}-12"
+        else:
+            month_key = f"{now.year}-{now.month - 1:02d}"
+    else:
+        month_key = now.strftime("%Y-%m")
     session_id = now.strftime("%Y%m%d_%H%M%S")
 
     cursor = db.cursor()
