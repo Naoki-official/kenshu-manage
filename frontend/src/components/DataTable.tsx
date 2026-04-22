@@ -7,18 +7,21 @@ interface Props {
   rows: RowData[];
   showAll: boolean;
   columnFilters: Record<string, string>;
+  sessionMonth: string;
   onCommentClick: (row: RowData) => void;
 }
 
 /**
- * 納期が今月かどうか判定
+ * 納期がN月（セッション月）の最終日以前かどうか判定
  */
-function isCurrentMonth(dateStr: string | undefined): boolean {
-  if (!dateStr) return false;
+function isWithinMonthN(dateStr: string | undefined, sessionMonth: string): boolean {
+  if (!dateStr || !sessionMonth) return false;
   try {
     const d = new Date(dateStr);
-    const now = new Date();
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    const [yStr, mStr] = sessionMonth.split("-");
+    const endOfMonth = new Date(Number(yStr), Number(mStr), 0);
+    endOfMonth.setHours(23, 59, 59, 999);
+    return d <= endOfMonth;
   } catch {
     return false;
   }
@@ -42,33 +45,34 @@ function isOverdue(dateStr: string | undefined): boolean {
 /**
  * 行のハイライトクラスを決定
  */
-function getRowClass(row: RowData): string {
+function getRowClass(row: RowData, sessionMonth: string): string {
   const comment = String(row[FIELD_COMMENT] || "");
   const delivery = row[COL_DELIVERY_DATE] as string | undefined;
 
   // コメントあり → 緑
   if (comment) return "row-green";
   // 納期超過・未コメント → 赤
-  if (isOverdue(delivery) && !comment) return "row-red";
-  // 今月納期・未コメント → 黄
-  if (isCurrentMonth(delivery) && !comment) return "row-yellow";
+  if (isOverdue(delivery)) return "row-red";
+  // N月最終日まで・未コメント → 黄
+  if (isWithinMonthN(delivery, sessionMonth)) return "row-yellow";
   return "";
 }
 
 /**
- * デフォルトフィルタ：今月納期 かつ 未コメント
+ * デフォルトフィルタ：N月最終日まで かつ 未コメント または 納期超過 かつ 未コメント
  */
-function defaultFilter(row: RowData): boolean {
+function defaultFilter(row: RowData, sessionMonth: string): boolean {
   const delivery = row[COL_DELIVERY_DATE] as string | undefined;
   const comment = String(row[FIELD_COMMENT] || "");
-  // 今月納期 かつ 未コメント、または納期超過 かつ 未コメント
-  return (isCurrentMonth(delivery) || isOverdue(delivery)) && !comment;
+  // N月最終日まで かつ 未コメント、または納期超過 かつ 未コメント
+  return (isWithinMonthN(delivery, sessionMonth) || isOverdue(delivery)) && !comment;
 }
 
 export default function DataTable({
   rows,
   showAll,
   columnFilters,
+  sessionMonth,
   onCommentClick,
 }: Props) {
   const [sort, setSort] = useState<SortState | null>(null);
@@ -85,7 +89,7 @@ export default function DataTable({
 
     // デフォルトフィルタ（showAll=falseの場合）
     if (!showAll) {
-      result = result.filter(defaultFilter);
+      result = result.filter(r => defaultFilter(r, sessionMonth));
     }
 
     // 列フィルタ
@@ -160,7 +164,7 @@ export default function DataTable({
               </tr>
             ) : (
               filteredRows.map((row, idx) => (
-                <tr key={String(row[COL_MANAGEMENT_NUMBER]) || idx} className={getRowClass(row)}>
+                <tr key={String(row[COL_MANAGEMENT_NUMBER]) || idx} className={getRowClass(row, sessionMonth)}>
                   {columns.map((col) => (
                     <td key={col}>{String(row[col] ?? "")}</td>
                   ))}
