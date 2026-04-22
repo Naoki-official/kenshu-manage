@@ -17,3 +17,7 @@ FIELD_UPDATED_AT = "_updated_at"
 
 # 翌月判定の閾値（10日）
 NEXT_MONTH_THRESHOLD = 10
+
+# データ保持期間（3年）
+KEEP_DATA_YEARS = 3
+
