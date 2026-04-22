@@ -255,6 +255,7 @@ function App() {
           rows={sessionDetail.rows}
           showAll={showAll}
           columnFilters={columnFilters}
+          sessionMonth={sessionDetail.month}
           onCommentClick={(row) => setModalRow(row)}
         />
       ) : sessions.length === 0 ? (
