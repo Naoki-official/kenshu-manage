@@ -14,3 +14,6 @@ COL_DELIVERY_DATE = "納期"
 FIELD_COMMENT = "_comment"
 FIELD_CHECKED = "_checked"
 FIELD_UPDATED_AT = "_updated_at"
+
+# 翌月判定の閾値（10日）
+NEXT_MONTH_THRESHOLD = 10
