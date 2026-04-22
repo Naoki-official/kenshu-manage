@@ -20,6 +20,7 @@ export interface RowData {
 /** セッション詳細データ */
 export interface SessionDetail {
   id: string;
+  month: string;
   uploaded_at: string;
   round: number;
   rows: RowData[];
