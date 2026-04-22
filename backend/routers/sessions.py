@@ -24,11 +24,18 @@ class CommentUpdate(BaseModel):
 
 @router.get("/sessions")
 def list_sessions(db: sqlite3.Connection = Depends(get_db)):
-    """全セッション一覧を返す（タブ表示用）。"""
+    """直近1年分のセッション一覧を返す（タブ表示用）。"""
     cursor = db.cursor()
     
-    # sessions を uploaded_at の昇順で全件取得
-    cursor.execute("SELECT id, month, uploaded_at, round FROM sessions ORDER BY uploaded_at ASC")
+    now = datetime.now()
+    try:
+        one_year_ago = now.replace(year=now.year - 1)
+    except ValueError:
+        one_year_ago = now.replace(year=now.year - 1, month=2, day=28)
+    one_year_ago_str = one_year_ago.isoformat(timespec="seconds")
+    
+    # sessions を uploaded_at の昇順で取得（直近1年分）
+    cursor.execute("SELECT id, month, uploaded_at, round FROM sessions WHERE uploaded_at >= ? ORDER BY uploaded_at ASC", (one_year_ago_str,))
     sessions = cursor.fetchall()
     
     result = []

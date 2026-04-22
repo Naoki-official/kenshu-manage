@@ -138,6 +138,17 @@ async def upload_csv(file: UploadFile = File(...), db: sqlite3.Connection = Depe
         VALUES (?, ?, ?, ?, ?, ?)
     """, records_to_insert)
     
+    # # KEEP_DATA_YEARS年前の古いデータを削除（いったん機能OFF）
+    # try:
+    #     threshold_date = now.replace(year=now.year - KEEP_DATA_YEARS)
+    # except ValueError:
+    #     # 今日が2月29日の場合は2月28日とする
+    #     threshold_date = now.replace(year=now.year - KEEP_DATA_YEARS, month=2, day=28)
+    
+    # threshold_date_str = threshold_date.isoformat(timespec="seconds")
+    # cursor.execute("DELETE FROM records WHERE session_id IN (SELECT id FROM sessions WHERE uploaded_at < ?)", (threshold_date_str,))
+    # cursor.execute("DELETE FROM sessions WHERE uploaded_at < ?", (threshold_date_str,))
+    
     db.commit()
 
     return {
