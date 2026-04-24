@@ -13,6 +13,7 @@ from constants import (
     FIELD_COMMENT,
     FIELD_CHECKED,
     FIELD_UPDATED_AT,
+    NEXT_MONTH_THRESHOLD,
 )
 from database import get_db
 
@@ -134,7 +135,7 @@ async def upload_csv(file: UploadFile = File(...), db: sqlite3.Connection = Depe
         ))
         
     cursor.executemany("""
-        INSERT INTO records (session_id, management_number, comment, checked, updated_at, data)
+        INSERT OR IGNORE INTO records (session_id, management_number, comment, checked, updated_at, data)
         VALUES (?, ?, ?, ?, ?, ?)
     """, records_to_insert)
     
