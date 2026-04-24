@@ -9,7 +9,7 @@ DB_PATH = DATA_DIR / "kenshu.db"
 
 def get_db_connection():
     # timeout=15.0 ensures that if another process/thread locks the DB, it waits up to 15s
-    conn = sqlite3.connect(DB_PATH, timeout=15.0)
+    conn = sqlite3.connect(DB_PATH, timeout=15.0, check_same_thread=False)
     # Enable dict-like access for rows
     conn.row_factory = sqlite3.Row
     
@@ -39,7 +39,8 @@ def init_db():
                 checked BOOLEAN DEFAULT 0,
                 updated_at TEXT DEFAULT '',
                 data TEXT DEFAULT '{}',
-                FOREIGN KEY(session_id) REFERENCES sessions(id)
+                FOREIGN KEY(session_id) REFERENCES sessions(id),
+                UNIQUE(session_id, management_number)
             )
         """)
         
@@ -47,6 +48,7 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_month ON sessions(month)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_records_session_id ON records(session_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_records_management_number ON records(management_number)")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_records_session_mgmt ON records(session_id, management_number)")
         
         conn.commit()
     finally:
