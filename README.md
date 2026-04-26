@@ -83,7 +83,6 @@ CSVの列名が変わった場合、以下の箇所を変更する。
 |バックエンド  |Python / FastAPI / uvicorn           |
 |フロントエンド |Vite + React 18 + TypeScript         |
 |データ保存   |SQLite3（`backend/data/kenshu.db`、標準ライブラリ使用）|
-|CSV文字コード|cp932（Shift-JIS）                     |
 
 -----
 
